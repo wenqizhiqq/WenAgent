@@ -325,6 +325,7 @@ public partial class MainWindow : Window
             _runCts?.Dispose();
             _runCts = null;
             _stream = null;
+            TransferPanel.Visibility = Visibility.Collapsed;
 
             if (_engine != null)
             {
@@ -405,6 +406,19 @@ public partial class MainWindow : Window
 
             case AgentEventKind.Info:
                 AddInfo(ev.Text);
+                break;
+
+            case AgentEventKind.Progress:
+                if (string.IsNullOrEmpty(ev.Text))
+                {
+                    TransferPanel.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    TransferText.Text = ev.Text;
+                    TransferPanel.Visibility = Visibility.Visible;
+                    TransferBar.IsIndeterminate = true;
+                }
                 break;
         }
 

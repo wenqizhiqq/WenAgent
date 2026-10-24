@@ -10,7 +10,8 @@ public enum AgentEventKind
     StepStarted,
     ToolResult,
     Final,
-    Info
+    Info,
+    Progress
 }
 
 public sealed record AgentEvent(AgentEventKind Kind, string Text = "", string Detail = "", bool Success = true);
@@ -111,6 +112,59 @@ public sealed class AgentEngine : IDisposable
                         else
                             result = await AgentTools.ExecuteAsync(
                                 parsed.Tool, parsed.ArgsJson, WorkspacePath, AllowCommands, ct);
+
+                        if (!result.Success
+                            && parsed.Tool.Equals("run_python", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string? module = AgentTools.GetMissingPythonModule(result.Output);
+                            string? package = module == null ? null : AgentTools.MapPythonPackage(module);
+
+                            if (package != null)
+                            {
+                                try
+                                {
+                                    sink.Report(new AgentEvent(AgentEventKind.Progress,
+                                        $"缺少 Python 模块 {module}，正在自动安装 {package}…"));
+
+                                    ToolResult install = await AgentTools.InstallPythonPackageAsync(
+                                        package,
+                                        message => sink.Report(new AgentEvent(AgentEventKind.Progress, message)),
+                                        ct);
+
+                                    if (install.Success)
+                                    {
+                                        sink.Report(new AgentEvent(AgentEventKind.Progress,
+                                            "安装完成，正在重试脚本…"));
+
+                                        result = await AgentTools.ExecuteAsync(
+                                            parsed.Tool, parsed.ArgsJson, WorkspacePath, AllowCommands, ct);
+                                        result = result with
+                                        {
+                                            Output = $"已自动安装 Python 包 {package}。\n" + result.Output
+                                        };
+                                    }
+                                    else
+                                    {
+                                        result = install with
+                                        {
+                                            Output = $"自动安装 {package} 失败：\n{install.Output}"
+                                        };
+                                    }
+                                }
+                                finally
+                                {
+                                    sink.Report(new AgentEvent(AgentEventKind.Progress, ""));
+                                }
+                            }
+                            else if (module != null)
+                            {
+                                result = result with
+                                {
+                                    Output = result.Output +
+                                             $"\n\n缺少 Python 模块 {module}，没有自动安装映射。"
+                                };
+                            }
+                        }
 
                         string output = Truncate(result.Output, 6000);
                         sink.Report(new AgentEvent(AgentEventKind.ToolResult, output, parsed.Tool, result.Success));

@@ -389,10 +389,24 @@
         <Border Grid.Row="4" Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
                 Padding="24,5">
             <Grid>
-                <TextBlock x:Name="ResourceText" FontSize="10.5" Foreground="#64748B"
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ResourceText" Grid.Column="0" FontSize="10.5" Foreground="#64748B"
                            VerticalAlignment="Center" Text="CPU --  ·  内存 --"/>
-                <TextBlock x:Name="StatusBarRight" HorizontalAlignment="Right" VerticalAlignment="Center"
-                           FontSize="10.5" Foreground="#94A3B8" Text="WenAgent · 本地 AI Agent"/>
+                <StackPanel x:Name="TransferPanel" Grid.Column="1" Orientation="Horizontal"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                    <ProgressBar x:Name="TransferBar" Width="150" Height="6" IsIndeterminate="True"
+                                 Foreground="{StaticResource AccentBrush}" Background="#E2E8F0"
+                                 VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TransferText" Margin="8,0,0,0" FontSize="10.5" Foreground="#475569"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+                </StackPanel>
+                <TextBlock x:Name="StatusBarRight" Grid.Column="2" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" FontSize="10.5" Foreground="#94A3B8"
+                           Text="WenAgent · 本地 AI Agent"/>
             </Grid>
         </Border>
     </Grid>

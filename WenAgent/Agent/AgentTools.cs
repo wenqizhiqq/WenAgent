@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace WenAgent.Agent;
 
@@ -358,6 +359,81 @@ public static class AgentTools
         return $"已自动备份 {files.Count} 个 Office 文件到：{backupDir}";
     }
 
+    public static string? GetMissingPythonModule(string output)
+    {
+        Match match = Regex.Match(output, @"No module named '([^']+)'");
+        if (!match.Success) return null;
+
+        string module = match.Groups[1].Value;
+        int dot = module.IndexOf('.');
+        return dot > 0 ? module[..dot] : module;
+    }
+
+    public static string? MapPythonPackage(string module) => module.ToLowerInvariant() switch
+    {
+        "openpyxl" => "openpyxl",
+        "docx" => "python-docx",
+        "pptx" => "python-pptx",
+        "pypdf" => "pypdf",
+        "pypdf2" => "pypdf",
+        "pdfplumber" => "pdfplumber",
+        "fitz" => "pymupdf",
+        "pil" => "pillow",
+        "cv2" => "opencv-python",
+        "numpy" => "numpy",
+        "pandas" => "pandas",
+        "matplotlib" => "matplotlib",
+        "bs4" => "beautifulsoup4",
+        "yaml" => "pyyaml",
+        "lxml" => "lxml",
+        "requests" => "requests",
+        "xlrd" => "xlrd",
+        "xlsxwriter" => "xlsxwriter",
+        "win32com" => "pywin32",
+        "onnxruntime" => "onnxruntime",
+        "scipy" => "scipy",
+        _ => null
+    };
+
+    public static async Task<ToolResult> InstallPythonPackageAsync(
+        string package, Action<string> onProgress, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(package))
+            return new ToolResult(false, "Python 包名为空。");
+
+        onProgress($"正在下载/安装 Python 包：{package}");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "python",
+            WorkingDirectory = AppContext.BaseDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        psi.ArgumentList.Add("-m");
+        psi.ArgumentList.Add("pip");
+        psi.ArgumentList.Add("install");
+        psi.ArgumentList.Add("--user");
+        psi.ArgumentList.Add("--disable-pip-version-check");
+        psi.ArgumentList.Add("--no-input");
+        psi.ArgumentList.Add("--progress-bar");
+        psi.ArgumentList.Add("off");
+        psi.ArgumentList.Add(package);
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        psi.Environment["PYTHONUTF8"] = "1";
+
+        ToolResult result = await RunProcessAsync(psi, ct, TimeSpan.FromMinutes(5));
+        onProgress(result.Success
+            ? $"Python 包 {package} 安装完成"
+            : $"Python 包 {package} 安装失败");
+
+        return result;
+    }
+
     private static async Task<ToolResult> RunCommandAsync(
         string workspace, string command, bool allowCommands, CancellationToken ct)
     {
@@ -394,7 +470,8 @@ public static class AgentTools
         return await RunProcessAsync(psi, ct);
     }
 
-    private static async Task<ToolResult> RunProcessAsync(ProcessStartInfo psi, CancellationToken ct)
+    private static async Task<ToolResult> RunProcessAsync(
+        ProcessStartInfo psi, CancellationToken ct, TimeSpan? timeout = null)
     {
         using var process = new Process { StartInfo = psi };
         if (!process.Start())
@@ -403,8 +480,9 @@ public static class AgentTools
         Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
         Task<string> stderrTask = process.StandardError.ReadToEndAsync();
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(60);
+        using var timeoutCts = new CancellationTokenSource(limit);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try
         {
@@ -424,7 +502,7 @@ public static class AgentTools
             if (ct.IsCancellationRequested) throw;
 
             return new ToolResult(false,
-                $"命令超过 60 秒，已终止。\n{Truncate(partial, MaxOutputChars)}");
+                $"命令超过 {limit.TotalSeconds:F0} 秒，已终止。\n{Truncate(partial, MaxOutputChars)}");
         }
 
         string stdout = await stdoutTask;
