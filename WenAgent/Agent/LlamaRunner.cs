@@ -65,6 +65,21 @@ public sealed class LlamaRunner : IDisposable
     public bool IsLoaded => _session != null;
     public bool NeedsReset => _dirty;
 
+    public int HistoryCharCount
+    {
+        get
+        {
+            try
+            {
+                return _session?.History.Messages.Sum(message => message.Content.Length) ?? 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+    }
+
     public async Task LoadAsync(string systemPrompt, IProgress<string>? status, CancellationToken ct)
     {
         status?.Report("正在加载模型…");

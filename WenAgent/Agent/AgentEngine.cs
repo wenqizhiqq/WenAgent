@@ -59,10 +59,12 @@ public sealed class AgentEngine : IDisposable
 
     public async Task RunAsync(string task, IProgress<AgentEvent> sink, CancellationToken ct)
     {
+        if (_runner.HistoryCharCount > 12000) _needsReset = true;
         PrepareSession();
 
         string input = task;
         int repairs = 0;
+        int emptyRetries = 0;
 
         try
         {
@@ -81,9 +83,20 @@ public sealed class AgentEngine : IDisposable
                     case StepKind.Final:
                     {
                         string answer = parsed.Answer.Trim();
-                        if (answer.Length == 0) answer = "（模型没有返回内容）";
-                        sink.Report(new AgentEvent(AgentEventKind.Final, answer));
-                        _turns.Add(new ChatTurn(task, answer));
+                        if (answer.Length == 0)
+                        {
+                            if (TryRecoverEmpty(task, input, ref emptyRetries, out string retryInput))
+                            {
+                                input = retryInput;
+                                continue;
+                            }
+
+                            answer = "模型本次没有生成内容。这通常是上下文过长或模型偶发空回复；" +
+                                     "请点“新对话”清空上下文后再试，或把任务拆小。";
+                            _needsReset = true;
+                        }
+
+                        FinishAnswer(task, answer, step, sink);
                         return;
                     }
                     case StepKind.Tool:
@@ -120,22 +133,44 @@ public sealed class AgentEngine : IDisposable
                         }
 
                         string fallback = parsed.Raw.Trim();
-                        if (fallback.Length == 0) fallback = "（模型没有返回可解析的内容）";
-                        sink.Report(new AgentEvent(AgentEventKind.Final, fallback));
-                        _turns.Add(new ChatTurn(task, fallback));
+                        if (fallback.Length == 0)
+                        {
+                            if (TryRecoverEmpty(task, input, ref emptyRetries, out string retryInput))
+                            {
+                                input = retryInput;
+                                continue;
+                            }
+
+                            fallback = "模型本次没有生成可解析的内容。请点“新对话”清空上下文后再试。";
+                            _needsReset = true;
+                        }
+
+                        FinishAnswer(task, fallback, step, sink);
                         return;
                     }
                     default:
                     {
                         string answer = parsed.Answer.Trim();
-                        if (answer.Length == 0) answer = "（模型没有返回内容）";
-                        sink.Report(new AgentEvent(AgentEventKind.Final, answer));
-                        _turns.Add(new ChatTurn(task, answer));
+                        if (answer.Length == 0)
+                        {
+                            if (TryRecoverEmpty(task, input, ref emptyRetries, out string retryInput))
+                            {
+                                input = retryInput;
+                                continue;
+                            }
+
+                            answer = "模型本次没有生成内容。这通常是上下文过长或模型偶发空回复；" +
+                                     "请点“新对话”清空上下文后再试，或把任务拆小。";
+                            _needsReset = true;
+                        }
+
+                        FinishAnswer(task, answer, step, sink);
                         return;
                     }
                 }
             }
 
+            _needsReset = true;
             sink.Report(new AgentEvent(AgentEventKind.Final,
                 $"已达到最大步骤数（{MaxSteps}），任务暂停。你可以继续追问，或换一种说法再试。"));
         }
@@ -240,6 +275,31 @@ public sealed class AgentEngine : IDisposable
 
             return new ToolResult(false, "视觉检测失败：" + message);
         }
+    }
+
+    private bool TryRecoverEmpty(string task, string previousInput, ref int emptyRetries, out string retryInput)
+    {
+        retryInput = "";
+
+        if (emptyRetries >= 1) return false;
+        emptyRetries++;
+
+        // 空回复往往是上下文被撑满；用已完成轮次重建会话，再把原任务和最近一次输入带回去
+        _needsReset = true;
+        PrepareSession();
+
+        retryInput = $"原始任务：{task}\n\n上一次的输入/工具结果：\n{previousInput}\n\n" +
+                     "请继续完成原始任务。如果已经完成，只输出 {\"action\":\"final\",\"answer\":\"...\"}。";
+        return true;
+    }
+
+    private void FinishAnswer(string task, string answer, int step, IProgress<AgentEvent> sink)
+    {
+        sink.Report(new AgentEvent(AgentEventKind.Final, answer));
+        _turns.Add(new ChatTurn(task, answer));
+
+        // 多步任务会留下大量工具输出，下一轮开始前压缩上下文，避免 16k 被撑满
+        if (step >= 5) _needsReset = true;
     }
 
     public void NewConversation()

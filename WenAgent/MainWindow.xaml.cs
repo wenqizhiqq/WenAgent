@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,10 +29,15 @@ public partial class MainWindow : Window
     private static readonly Brush ErrorBrush = MakeBrush(0xDC, 0x26, 0x26);
 
     private readonly ObservableCollection<ChatMessage> _messages = [];
+    private readonly Process _process = Process.GetCurrentProcess();
+    private readonly DispatcherTimer _resourceTimer;
+    private readonly DispatcherTimer _copyHintTimer;
 
     private AgentEngine? _engine;
     private CancellationTokenSource? _runCts;
     private ChatMessage? _stream;
+    private TimeSpan _lastCpuTime;
+    private long _lastCpuTimestamp;
     private bool _ready;
     private bool _running;
     private bool _loading;
@@ -48,6 +54,21 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         Closing += OnClosing;
 
+        _lastCpuTime = _process.TotalProcessorTime;
+        _lastCpuTimestamp = Stopwatch.GetTimestamp();
+
+        _resourceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _resourceTimer.Tick += (_, _) => UpdateResourceStatus();
+        _resourceTimer.Start();
+
+        _copyHintTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _copyHintTimer.Tick += (_, _) =>
+        {
+            _copyHintTimer.Stop();
+            StatusBarRight.Text = "WenAgent · 本地 AI Agent";
+        };
+
+        UpdateResourceStatus();
         AddInfo("正在查找本地模型…");
         UpdateUiState();
     }
@@ -60,6 +81,67 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         _runCts?.Cancel();
+        _resourceTimer.Stop();
+        _copyHintTimer.Stop();
+        _process.Dispose();
+    }
+
+    private void UpdateResourceStatus()
+    {
+        try
+        {
+            _process.Refresh();
+
+            TimeSpan cpuTime = _process.TotalProcessorTime;
+            long now = Stopwatch.GetTimestamp();
+            double elapsedSeconds = (now - _lastCpuTimestamp) / (double)Stopwatch.Frequency;
+
+            double cpuPercent = 0;
+            if (elapsedSeconds > 0)
+            {
+                double cpuSeconds = (cpuTime - _lastCpuTime).TotalSeconds;
+                cpuPercent = Math.Clamp(cpuSeconds / (elapsedSeconds * Environment.ProcessorCount) * 100, 0, 100);
+            }
+
+            _lastCpuTime = cpuTime;
+            _lastCpuTimestamp = now;
+
+            double memoryMb = _process.WorkingSet64 / 1024.0 / 1024.0;
+            string memory = memoryMb >= 1024 ? $"{memoryMb / 1024:F2} GB" : $"{memoryMb:F0} MB";
+            (double available, _) = SystemMemory.Get();
+
+            ResourceText.Text = $"CPU {cpuPercent:F0}%  ·  内存 {memory}" +
+                                (available > 0 ? $"  ·  系统可用 {available:F1} GB" : "");
+            ResourceText.ToolTip =
+                $"进程工作集：{memoryMb:F0} MB\n" +
+                $"进程私有内存：{_process.PrivateMemorySize64 / 1024.0 / 1024.0:F0} MB" +
+                (available > 0 ? $"\n系统可用物理内存：{available:F1} GB" : "");
+        }
+        catch
+        {
+        }
+    }
+
+    private void CopyMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ChatMessage message }) return;
+
+        string text = string.IsNullOrEmpty(message.FullContent) ? message.Content : message.FullContent;
+        if (string.IsNullOrEmpty(text)) return;
+
+        try
+        {
+            Clipboard.SetText(text);
+            StatusBarRight.Text = "已复制到剪贴板";
+        }
+        catch (Exception ex)
+        {
+            StatusBarRight.Text = "复制失败：" + ex.Message;
+        }
+
+        _copyHintTimer.Stop();
+        _copyHintTimer.Start();
+        e.Handled = true;
     }
 
     private async Task LocateAndLoadAsync()

@@ -132,6 +132,32 @@
             </Setter>
         </Style>
 
+        <Style x:Key="CopyIconButton" TargetType="Button">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="ToolTip" Value="复制这条消息"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DataTemplate x:Key="MessageTemplate">
             <Grid Margin="0,5">
                 <Border x:Name="Bubble" HorizontalAlignment="Left" MaxWidth="820"
@@ -139,8 +165,25 @@
                         Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
                         ToolTip="{Binding FullContent}">
                     <StackPanel>
-                        <TextBlock x:Name="HeaderText" Text="{Binding Header}" FontSize="10.5"
-                                   Foreground="#64748B" Margin="1,0,0,5" TextWrapping="Wrap"/>
+                        <Grid Margin="0,0,0,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="HeaderText" Grid.Column="0" Text="{Binding Header}" FontSize="10.5"
+                                       Foreground="#64748B" Margin="1,0,8,0" TextWrapping="Wrap"/>
+                            <Button x:Name="MessageCopyButton" Grid.Column="1" Style="{StaticResource CopyIconButton}"
+                                    Click="CopyMessage_Click">
+                                <Viewbox Width="12" Height="12">
+                                    <Canvas Width="12" Height="12">
+                                        <Path Data="M2,4 L8,4 L8,11 L2,11 Z" Stroke="#64748B"
+                                              StrokeThickness="1.2" Fill="Transparent"/>
+                                        <Path Data="M4,1 L10,1 L10,8 L8,8 L8,4 L4,4 Z" Stroke="#64748B"
+                                              StrokeThickness="1.2" Fill="Transparent"/>
+                                    </Canvas>
+                                </Viewbox>
+                            </Button>
+                        </Grid>
                         <ScrollViewer x:Name="BodyScroll" VerticalScrollBarVisibility="Disabled"
                                       HorizontalScrollBarVisibility="Disabled">
                             <TextBlock x:Name="BodyText" Text="{Binding Content}" TextWrapping="Wrap"
@@ -198,6 +241,7 @@
                     <Setter TargetName="Bubble" Property="Padding" Value="4"/>
                     <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Center"/>
                     <Setter TargetName="HeaderText" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="MessageCopyButton" Property="Visibility" Value="Collapsed"/>
                     <Setter TargetName="BodyText" Property="Foreground" Value="#64748B"/>
                     <Setter TargetName="BodyText" Property="FontSize" Value="11.5"/>
                     <Setter TargetName="BodyText" Property="TextAlignment" Value="Center"/>
@@ -211,6 +255,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -337,6 +382,17 @@
                             Style="{StaticResource AccentButton}" MinWidth="92"
                             Click="Send_Click" IsEnabled="False"/>
                 </Grid>
+            </Grid>
+        </Border>
+
+        <!-- 底部状态栏 -->
+        <Border Grid.Row="4" Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
+                Padding="24,5">
+            <Grid>
+                <TextBlock x:Name="ResourceText" FontSize="10.5" Foreground="#64748B"
+                           VerticalAlignment="Center" Text="CPU --  ·  内存 --"/>
+                <TextBlock x:Name="StatusBarRight" HorizontalAlignment="Right" VerticalAlignment="Center"
+                           FontSize="10.5" Foreground="#94A3B8" Text="WenAgent · 本地 AI Agent"/>
             </Grid>
         </Border>
     </Grid>

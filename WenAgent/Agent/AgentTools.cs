@@ -39,7 +39,7 @@ public static class AgentTools
             {
                 "list_files" => ListFiles(workspace, GetString(args, "path", "."), ct),
                 "read_file" => ReadFile(workspace, GetString(args, "path", ""), ct),
-                "write_file" => WriteFile(workspace, GetString(args, "path", ""),
+                "write_file" => await WriteFileAsync(workspace, GetString(args, "path", ""),
                     GetString(args, "content", ""), ct),
                 "find_files" => FindFiles(workspace, GetString(args, "path", "."),
                     GetString(args, "pattern", "*"), GetInt(args, "max_results", 20), ct),
@@ -223,19 +223,65 @@ public static class AgentTools
         return new ToolResult(true, text);
     }
 
-    private static ToolResult WriteFile(string workspace, string path, string content, CancellationToken ct)
+    private static async Task<ToolResult> WriteFileAsync(
+        string workspace, string path, string content, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(path))
             return new ToolResult(false, "缺少参数 path。");
 
         string full = ResolvePath(workspace, path);
+        string ext = Path.GetExtension(full).ToLowerInvariant();
+
+        if (BinaryExtensions.Contains(ext))
+        {
+            return new ToolResult(false,
+                $"{ext} 是二进制/Office 文件，write_file 会覆盖并损坏它，已拒绝写入。\n" +
+                "请改为：先用 write_file 写一个 .py 脚本，再用 run_python 通过 openpyxl/python-docx 等库修改；" +
+                "run_python 会自动备份同目录下的 Office 文件。");
+        }
+
         string? dir = Path.GetDirectoryName(full);
         if (dir != null) Directory.CreateDirectory(dir);
 
         File.WriteAllText(full, content, new UTF8Encoding(false));
+
+        if (ext is ".py" or ".pyw")
+        {
+            ToolResult syntax = await CheckPythonSyntaxAsync(full, dir ?? workspace, ct);
+            if (!syntax.Success)
+            {
+                return new ToolResult(false,
+                    $"已写入：{full}\nPython 语法检查未通过：\n{syntax.Output}\n" +
+                    "多行字符串请用三引号；修正引号/缩进后重新 write_file，再 run_python。");
+            }
+        }
+
         return new ToolResult(true,
             $"已写入：{full}（{content.Length} 字符，{FormatSize(new FileInfo(full).Length)}）");
+    }
+
+    private static async Task<ToolResult> CheckPythonSyntaxAsync(
+        string scriptPath, string workingDirectory, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "python",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())");
+        psi.ArgumentList.Add(scriptPath);
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        psi.Environment["PYTHONUTF8"] = "1";
+
+        return await RunProcessAsync(psi, ct);
     }
 
     private static async Task<ToolResult> RunPythonAsync(
@@ -256,6 +302,16 @@ public static class AgentTools
 
         string scriptDir = Path.GetDirectoryName(full) ?? workspace;
 
+        string backupNote = "";
+        try
+        {
+            backupNote = BackupOfficeFiles(scriptDir);
+        }
+        catch (Exception ex)
+        {
+            backupNote = "警告：Office 文件自动备份失败：" + ex.Message;
+        }
+
         var psi = new ProcessStartInfo
         {
             FileName = "python",
@@ -271,7 +327,35 @@ public static class AgentTools
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUTF8"] = "1";
 
-        return await RunProcessAsync(psi, ct);
+        ToolResult result = await RunProcessAsync(psi, ct);
+
+        if (backupNote.Length > 0)
+            result = result with { Output = backupNote + "\n" + result.Output };
+
+        return result;
+    }
+
+    private static string BackupOfficeFiles(string dir)
+    {
+        string[] patterns = ["*.xlsx", "*.xls", "*.xlsm", "*.docx", "*.doc"];
+        var files = new List<string>();
+
+        foreach (string pattern in patterns)
+            files.AddRange(Directory.EnumerateFiles(dir, pattern, SearchOption.TopDirectoryOnly));
+
+        if (files.Count == 0) return "";
+
+        string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
+        string backupDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WenAgent", "backups", stamp);
+
+        Directory.CreateDirectory(backupDir);
+
+        foreach (string file in files)
+            File.Copy(file, Path.Combine(backupDir, Path.GetFileName(file)), overwrite: false);
+
+        return $"已自动备份 {files.Count} 个 Office 文件到：{backupDir}";
     }
 
     private static async Task<ToolResult> RunCommandAsync(

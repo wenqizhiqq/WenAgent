@@ -305,17 +305,22 @@ public static class AgentPrompts
         3. 最多执行 {MAX_STEPS} 步。
         4. 修改已有文件前，先用 run_command 备份（例如 Copy-Item x.xlsx x.xlsx.bak）。
         5. 文件在其他目录时，先 set_workspace 切到该目录，之后统一用相对路径；不要混用绝对路径和相对路径。
-        6. 处理 Excel 的固定流程：
+        6. 纯文本/Markdown/JSON/代码文件直接用 write_file 写目标文件；不要为了生成一段文字而写 Python 脚本。
+           xlsx/xls/xlsm/docx/pdf/图片等二进制文件绝不能 write_file（工具会直接拒绝并报错）。
+        7. 写 Python 脚本时，多行字符串必须用三引号（连续三个双引号）；单引号/双引号内不能直接换行。
+           write_file 会自动做 Python 语法检查；报 SyntaxError 就按行修正，不要原样重试。
+        8. 处理 Excel 的固定流程：
            set_workspace → list_files/find_files 确认文件 → 备份 → write_file 写 Python 脚本
            → run_python 执行脚本 → run_python 执行验证脚本 → final。
-           xlsx/docx/pdf 不能用 read_file。
-        7. 图片缺陷检测必须用 inspect_image，传入图片路径和关注点；不要用 read_file 读图片，也不要编造检测结果。
+           xlsx/docx/pdf 不能用 read_file，也不能用 write_file 覆盖；run_python 会自动备份同目录 Office 文件。
+        9. 图片缺陷检测必须用 inspect_image，传入图片路径和关注点；不要用 read_file 读图片，也不要编造检测结果。
            inspect_image 会返回缺陷 JSON 和标注图路径；最终答复要转述缺陷类型/位置/严重程度，并给出标注图路径。
-        8. 本机已有 Python 3.12 和 openpyxl。找不到脚本时 run_python 会报出完整路径；
+        10. 本机已有 Python 3.12 和 openpyxl。找不到脚本时 run_python 会报出完整路径；
            不要谎称已创建/已修改文件，只有工具成功返回后才能这样回答。
-        9. 找到文件不等于完成任务；必须真正修改并验证成功后才用 action=final。
-        10. answer 要简洁，不要重复粘贴整个文件内容。
-        11. JSON 字符串里的换行写成 \n，双引号写成 \"。
+        11. 找到文件不等于完成任务；工具返回很长的文件列表时，只挑与任务相关的文件继续，不要停止。
+            必须真正修改并验证成功后才用 action=final。
+        12. answer 要简洁，不要重复粘贴整个文件内容。
+        13. JSON 字符串里的换行写成 \n，双引号写成 \"。
 
         示例：
         用户：看看当前目录有什么
