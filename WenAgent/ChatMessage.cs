@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Media;
 
 namespace WenAgent;
 
@@ -19,6 +20,7 @@ public sealed class ChatMessage : INotifyPropertyChanged
     private string _header = "";
     private string _content = "";
     private string? _fullContent;
+    private ImageSource? _annotatedImage;
     private MessageKind _kind;
 
     public string Header
@@ -62,6 +64,17 @@ public sealed class ChatMessage : INotifyPropertyChanged
         {
             if (_kind == value) return;
             _kind = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public ImageSource? AnnotatedImage
+    {
+        get => _annotatedImage;
+        set
+        {
+            if (ReferenceEquals(_annotatedImage, value)) return;
+            _annotatedImage = value;
             OnPropertyChanged();
         }
     }

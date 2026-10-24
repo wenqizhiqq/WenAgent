@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using WenAgent.Agent;
@@ -129,12 +130,15 @@ public partial class MainWindow : Window
             SetStatus($"就绪 · {Path.GetFileName(path)}", StatusKind.Ready);
             StatusText.ToolTip = $"模型：{path}\n工作目录：{engine.WorkspacePath}";
             WorkingDirButton.ToolTip = engine.WorkspacePath;
+            WorkspaceText.Text = "工作目录：" + engine.WorkspacePath;
+            WorkspaceText.ToolTip = engine.WorkspacePath + "\n点击切换工作目录";
 
             AddInfo("模型已就绪。");
             AddInfo($"模型：{path}");
             AddInfo($"工作目录：{engine.WorkspacePath}");
             AddInfo("可以试试：看看工作目录里有什么；或者：写一个 hello.txt 再读出来。");
             AddInfo("要修改已有文件：点右上角“工作目录”选择文件所在文件夹，或直接在任务里写绝对路径。");
+            AddInfo("要检测图片缺陷：点底部“检测图片”选择图片，或直接说“检测 xxx.jpg 的缺陷”。");
             return true;
         }
         catch (Exception ex)
@@ -239,6 +243,15 @@ public partial class MainWindow : Window
             _runCts?.Dispose();
             _runCts = null;
             _stream = null;
+
+            if (_engine != null)
+            {
+                WorkspaceText.Text = "工作目录：" + _engine.WorkspacePath;
+                WorkspaceText.ToolTip = _engine.WorkspacePath + "\n点击切换工作目录";
+                WorkingDirButton.ToolTip = _engine.WorkspacePath;
+                UserSettings.SaveWorkspace(_engine.WorkspacePath);
+            }
+
             UpdateUiState();
             ScrollToEnd(force: true);
             InputBox.Focus();
@@ -283,14 +296,25 @@ public partial class MainWindow : Window
                 break;
 
             case AgentEventKind.ToolResult:
+            {
+                string? annotatedPath = null;
+                if (ev.Detail.Equals("inspect_image", StringComparison.OrdinalIgnoreCase))
+                {
+                    string? markerLine = ev.Text.Split('\n')
+                        .FirstOrDefault(line => line.StartsWith("标注图：", StringComparison.Ordinal));
+                    annotatedPath = markerLine?["标注图：".Length..].Trim();
+                }
+
                 _messages.Add(new ChatMessage
                 {
                     Kind = ev.Success ? MessageKind.Tool : MessageKind.Error,
                     Header = $"工具结果 · {ev.Detail}",
                     Content = Truncate(ev.Text, 2000),
-                    FullContent = ev.Text
+                    FullContent = ev.Text,
+                    AnnotatedImage = LoadAnnotatedImage(annotatedPath)
                 });
                 break;
+            }
 
             case AgentEventKind.Final:
                 FinishStream("WenAgent", MessageKind.Assistant, ev.Text);
@@ -302,7 +326,10 @@ public partial class MainWindow : Window
                 break;
         }
 
-        ScrollToEnd();
+        bool forceScroll = ev.Kind is AgentEventKind.GenerationStarted
+            or AgentEventKind.ToolResult
+            or AgentEventKind.Final;
+        ScrollToEnd(forceScroll);
     }
 
     private void FinishStream(string header, MessageKind kind, string content)
@@ -373,6 +400,8 @@ public partial class MainWindow : Window
 
             UserSettings.SaveWorkspace(path);
             WorkingDirButton.ToolTip = path;
+            WorkspaceText.Text = "工作目录：" + path;
+            WorkspaceText.ToolTip = path + "\n点击切换工作目录";
             StatusText.ToolTip = $"模型：{engine.ModelPath}\n工作目录：{path}";
 
             AddInfo($"工作目录已切换到：{path}");
@@ -389,15 +418,170 @@ public partial class MainWindow : Window
         }
     }
 
+    private static ImageSource? LoadAnnotatedImage(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+
+        try
+        {
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.UriSource = new Uri(path, UriKind.Absolute);
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void Vision_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || _running || _loading) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择要检测的图片",
+            Filter = "图片 (*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.tif;*.tiff|所有文件 (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        InputBox.Text =
+            $"请用 inspect_image 检测图片 \"{dialog.FileName}\" 的缺陷，" +
+            "重点关注：划痕、裂纹、凹陷、孔洞、污渍。请生成标注图并告诉我结果。";
+        InputBox.Focus();
+        InputBox.CaretIndex = InputBox.Text.Length;
+        UpdateUiState();
+    }
+
+    private void WorkspaceText_Click(object sender, MouseButtonEventArgs e)
+    {
+        WorkingDir_Click(sender, e);
+    }
+
     private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
 
     private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            if (TryPasteFiles())
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
         {
             e.Handled = true;
             if (SendButton.IsEnabled) _ = SendAsync();
         }
+    }
+
+    private void InputBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        try
+        {
+            if (e.DataObject.GetDataPresent(DataFormats.FileDrop)
+                && e.DataObject.GetData(DataFormats.FileDrop) is string[] paths
+                && paths.Length > 0)
+            {
+                string[] existing = paths.Where(path => File.Exists(path) || Directory.Exists(path)).ToArray();
+                if (existing.Length > 0)
+                {
+                    InsertPaths(existing);
+                    e.CancelCommand();
+                    return;
+                }
+            }
+
+            if (e.DataObject.GetDataPresent(DataFormats.Bitmap)
+                && e.DataObject.GetData(DataFormats.Bitmap) is BitmapSource image)
+            {
+                string path = SavePastedImage(image);
+                InsertPaths([path]);
+                e.CancelCommand();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static string SavePastedImage(BitmapSource image)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "WenAgentPaste");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, $"pasted_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
+
+        using (FileStream stream = File.Create(path))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(image));
+            encoder.Save(stream);
+        }
+
+        return path;
+    }
+
+    private bool TryPasteFiles()
+    {
+        try
+        {
+            if (Clipboard.ContainsFileDropList())
+            {
+                var paths = Clipboard.GetFileDropList().Cast<string>()
+                    .Where(path => File.Exists(path) || Directory.Exists(path))
+                    .ToArray();
+
+                if (paths.Length > 0)
+                {
+                    InsertPaths(paths);
+                    return true;
+                }
+            }
+
+            if (Clipboard.ContainsImage())
+            {
+                BitmapSource? image = Clipboard.GetImage();
+                if (image != null)
+                {
+                    InsertPaths([SavePastedImage(image)]);
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddInfo("读取剪贴板失败：" + ex.Message);
+        }
+
+        return false;
+    }
+
+    private void InsertPaths(IReadOnlyList<string> paths)
+    {
+        string joined = string.Join(Environment.NewLine, paths.Select(path => $"\"{path}\""));
+
+        int start = InputBox.SelectionStart;
+        string before = InputBox.Text[..start];
+        string after = InputBox.Text[(start + InputBox.SelectionLength)..];
+
+        string prefix = before.Length > 0 && !char.IsWhiteSpace(before[^1]) ? Environment.NewLine : "";
+        string suffix = after.Length > 0 && !char.IsWhiteSpace(after[0]) ? Environment.NewLine : Environment.NewLine;
+        string insertion = prefix + joined + suffix;
+
+        InputBox.SelectedText = insertion;
+        InputBox.SelectionStart = start + insertion.Length;
+        InputBox.SelectionLength = 0;
+        InputBox.Focus();
+        UpdateUiState();
     }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -459,6 +643,7 @@ public partial class MainWindow : Window
         InputBox.IsEnabled = _ready && !_loading;
         NewChatButton.IsEnabled = _ready && idle;
         WorkingDirButton.IsEnabled = _ready && idle;
+        VisionButton.IsEnabled = _ready && idle;
         CommandCheck.IsEnabled = _engine != null && idle;
         MissingPanel.IsEnabled = idle;
     }

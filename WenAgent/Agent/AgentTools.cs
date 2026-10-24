@@ -45,8 +45,10 @@ public static class AgentTools
                     GetString(args, "pattern", "*"), GetInt(args, "max_results", 20), ct),
                 "run_command" => await RunCommandAsync(workspace, GetString(args, "command", ""),
                     allowCommands, ct),
+                "run_python" => await RunPythonAsync(workspace, GetString(args, "script", ""),
+                    allowCommands, ct),
                 _ => new ToolResult(false,
-                    $"未知工具：{name}。可用工具：list_files、read_file、write_file、find_files、run_command。")
+                    $"未知工具：{name}。可用工具：list_files、read_file、write_file、find_files、set_workspace、run_python、inspect_image、run_command。")
             };
         }
         catch (OperationCanceledException)
@@ -233,7 +235,43 @@ public static class AgentTools
 
         File.WriteAllText(full, content, new UTF8Encoding(false));
         return new ToolResult(true,
-            $"已写入：{DisplayPath(workspace, full)}（{content.Length} 字符，{FormatSize(new FileInfo(full).Length)}）");
+            $"已写入：{full}（{content.Length} 字符，{FormatSize(new FileInfo(full).Length)}）");
+    }
+
+    private static async Task<ToolResult> RunPythonAsync(
+        string workspace, string script, bool allowCommands, CancellationToken ct)
+    {
+        if (!allowCommands)
+            return new ToolResult(false, "用户已在界面上关闭“允许执行命令”，请不要重试，改用 final 说明。");
+
+        if (string.IsNullOrWhiteSpace(script))
+            return new ToolResult(false, "缺少参数 script。");
+
+        ct.ThrowIfCancellationRequested();
+
+        string full = ResolvePath(workspace, script);
+        if (!File.Exists(full))
+            return new ToolResult(false,
+                $"脚本不存在：{full}\n请先用 write_file 创建脚本，再调用 run_python。");
+
+        string scriptDir = Path.GetDirectoryName(full) ?? workspace;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "python",
+            WorkingDirectory = scriptDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        psi.ArgumentList.Add(full);
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        psi.Environment["PYTHONUTF8"] = "1";
+
+        return await RunProcessAsync(psi, ct);
     }
 
     private static async Task<ToolResult> RunCommandAsync(
@@ -269,9 +307,14 @@ public static class AgentTools
             "$env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'; " +
             "$ProgressPreference='SilentlyContinue'; " + command);
 
+        return await RunProcessAsync(psi, ct);
+    }
+
+    private static async Task<ToolResult> RunProcessAsync(ProcessStartInfo psi, CancellationToken ct)
+    {
         using var process = new Process { StartInfo = psi };
         if (!process.Start())
-            return new ToolResult(false, "无法启动 PowerShell。");
+            return new ToolResult(false, $"无法启动进程：{psi.FileName}");
 
         Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
         Task<string> stderrTask = process.StandardError.ReadToEndAsync();

@@ -146,6 +146,8 @@
                             <TextBlock x:Name="BodyText" Text="{Binding Content}" TextWrapping="Wrap"
                                        FontSize="13.5" LineHeight="21" Foreground="{StaticResource BodyBrush}"/>
                         </ScrollViewer>
+                        <Image Source="{Binding AnnotatedImage}" Margin="0,8,0,0" MaxHeight="320"
+                               Stretch="Uniform" HorizontalAlignment="Left"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -236,6 +238,10 @@
                                        FontSize="11.5" Foreground="{StaticResource MutedBrush}"
                                        TextTrimming="CharacterEllipsis" MaxWidth="330"/>
                         </StackPanel>
+                        <TextBlock x:Name="WorkspaceText" Margin="0,3,0,0" FontSize="10.5"
+                                   Foreground="#94A3B8" TextTrimming="CharacterEllipsis" MaxWidth="480"
+                                   Cursor="Hand" MouseLeftButtonUp="WorkspaceText_Click"
+                                   ToolTip="点击切换工作目录"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -302,9 +308,10 @@
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                  VerticalContentAlignment="Top"
                                  TextChanged="InputBox_TextChanged"
-                                 PreviewKeyDown="InputBox_PreviewKeyDown"/>
+                                 PreviewKeyDown="InputBox_PreviewKeyDown"
+                                 DataObject.Pasting="InputBox_Pasting"/>
                         <TextBlock x:Name="InputPlaceholder" Margin="13,11,13,0"
-                                   Text="描述任务，例如：修改当前目录的 xxx.xlsx，或先点“工作目录”选择文件夹"
+                                   Text="描述任务，例如：修改 xxx.xlsx；也可以 Ctrl+V 粘贴文件、文件夹或截图"
                                    Foreground="#94A3B8" FontSize="13" IsHitTestVisible="False"
                                    TextWrapping="Wrap"/>
                     </Grid>
@@ -315,14 +322,18 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="10.5"
                                Foreground="#94A3B8"
-                               Text="Enter 发送 · Shift+Enter 换行 · 相对路径基于工作目录，也支持绝对路径"/>
-                    <Button x:Name="StopButton" Grid.Column="1" Content="停止"
+                               Text="Enter 发送 · Shift+Enter 换行 · 可 Ctrl+V 粘贴文件/截图"/>
+                    <Button x:Name="VisionButton" Grid.Column="1" Content="检测图片"
+                            Style="{StaticResource GhostButton}" Padding="12,7" Margin="0,0,8,0"
+                            Click="Vision_Click" IsEnabled="False"/>
+                    <Button x:Name="StopButton" Grid.Column="2" Content="停止"
                             Style="{StaticResource DangerButton}" MinWidth="78" Margin="0,0,8,0"
                             Click="Stop_Click" IsEnabled="False"/>
-                    <Button x:Name="SendButton" Grid.Column="2" Content="发送"
+                    <Button x:Name="SendButton" Grid.Column="3" Content="发送"
                             Style="{StaticResource AccentButton}" MinWidth="92"
                             Click="Send_Click" IsEnabled="False"/>
                 </Grid>
