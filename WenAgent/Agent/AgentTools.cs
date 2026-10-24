@@ -12,6 +12,20 @@ public static class AgentTools
     private const int MaxReadChars = 20_000;
     private const int MaxOutputChars = 8_000;
 
+    private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".xlsx", ".xls", ".xlsm", ".docx", ".doc", ".pdf", ".zip", ".7z", ".rar",
+        ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".mp3", ".wav", ".mp4",
+        ".exe", ".dll", ".gguf", ".onnx", ".sqlite", ".db", ".pdb"
+    };
+
+    private static readonly HashSet<string> SkipSearchDirs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bin", "obj", ".git", ".vs", ".svn", ".nuget", "node_modules", "packages",
+        "AppData", "Windows", "WindowsApps", "Program Files", "Program Files (x86)",
+        "ProgramData", "$Recycle.Bin", "System Volume Information", "Temp", "logs"
+    };
+
     public static async Task<ToolResult> ExecuteAsync(
         string name, string argsJson, string workspace, bool allowCommands, CancellationToken ct)
     {
@@ -27,9 +41,12 @@ public static class AgentTools
                 "read_file" => ReadFile(workspace, GetString(args, "path", ""), ct),
                 "write_file" => WriteFile(workspace, GetString(args, "path", ""),
                     GetString(args, "content", ""), ct),
+                "find_files" => FindFiles(workspace, GetString(args, "path", "."),
+                    GetString(args, "pattern", "*"), GetInt(args, "max_results", 20), ct),
                 "run_command" => await RunCommandAsync(workspace, GetString(args, "command", ""),
                     allowCommands, ct),
-                _ => new ToolResult(false, $"未知工具：{name}。可用工具：list_files、read_file、write_file、run_command。")
+                _ => new ToolResult(false,
+                    $"未知工具：{name}。可用工具：list_files、read_file、write_file、find_files、run_command。")
             };
         }
         catch (OperationCanceledException)
@@ -81,6 +98,95 @@ public static class AgentTools
         return new ToolResult(true, sb.ToString().TrimEnd());
     }
 
+    private static ToolResult FindFiles(string workspace, string path, string pattern,
+        int maxResults, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        string root = ResolvePath(workspace, string.IsNullOrWhiteSpace(path) ? "." : path);
+
+        if (!Directory.Exists(root))
+            return new ToolResult(false, $"目录不存在：{path}");
+
+        if (string.IsNullOrWhiteSpace(pattern)) pattern = "*";
+        pattern = pattern.Trim();
+        int limit = Math.Clamp(maxResults, 1, 50);
+
+        var results = new List<string>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<(string Dir, int Depth)>();
+        queue.Enqueue((root, 0));
+
+        var stopwatch = Stopwatch.StartNew();
+        bool timedOut = false;
+        int scanned = 0;
+
+        var options = new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = false,
+            AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint
+        };
+
+        while (queue.Count > 0 && results.Count < limit)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (stopwatch.Elapsed > TimeSpan.FromSeconds(10))
+            {
+                timedOut = true;
+                break;
+            }
+
+            (string dir, int depth) = queue.Dequeue();
+            if (!visited.Add(dir)) continue;
+            scanned++;
+
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(dir, pattern, options))
+                {
+                    results.Add(Path.GetFullPath(file));
+                    if (results.Count >= limit) break;
+                }
+            }
+            catch
+            {
+            }
+
+            if (depth >= 6) continue;
+
+            try
+            {
+                foreach (string sub in Directory.EnumerateDirectories(dir, "*", options))
+                {
+                    if (SkipSearchDirs.Contains(Path.GetFileName(sub))) continue;
+                    queue.Enqueue((sub, depth + 1));
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"搜索根目录：{DisplayPath(workspace, root)}");
+        sb.AppendLine($"模式：{pattern}，最多 {limit} 条，深度 6，扫描 {scanned} 个目录");
+
+        if (results.Count == 0)
+        {
+            sb.AppendLine("没有找到匹配的文件。");
+        }
+        else
+        {
+            foreach (string result in results)
+                sb.AppendLine(DisplayPath(workspace, result));
+        }
+
+        if (timedOut) sb.AppendLine("…搜索超过 10 秒，已停止；请缩小搜索目录。");
+        if (results.Count >= limit) sb.AppendLine($"…已达到 {limit} 条上限。");
+
+        return new ToolResult(true, sb.ToString().TrimEnd());
+    }
+
     private static ToolResult ReadFile(string workspace, string path, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -90,6 +196,12 @@ public static class AgentTools
         string full = ResolvePath(workspace, path);
         if (!File.Exists(full))
             return new ToolResult(false, $"文件不存在：{path}");
+
+        string ext = Path.GetExtension(full).ToLowerInvariant();
+        if (BinaryExtensions.Contains(ext))
+            return new ToolResult(false,
+                $"{ext} 是二进制文件，read_file 无法读取。Excel 请用 run_command 执行 Python + openpyxl 脚本；" +
+                "Word 用 python-docx；PDF 用 pypdf。");
 
         using var stream = new FileStream(full, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
@@ -152,7 +264,10 @@ public static class AgentTools
         psi.ArgumentList.Add("Bypass");
         psi.ArgumentList.Add("-Command");
         psi.ArgumentList.Add(
-            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + command);
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; " +
+            "$OutputEncoding=[System.Text.Encoding]::UTF8; " +
+            "$env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'; " +
+            "$ProgressPreference='SilentlyContinue'; " + command);
 
         using var process = new Process { StartInfo = psi };
         if (!process.Start())
@@ -226,27 +341,30 @@ public static class AgentTools
     private static string ResolvePath(string workspace, string relative)
     {
         string rel = string.IsNullOrWhiteSpace(relative) ? "." : relative.Trim().Trim('"');
-        string full = Path.GetFullPath(Path.Combine(workspace, rel));
-        string root = Path.GetFullPath(workspace).TrimEnd(Path.DirectorySeparatorChar);
-
-        bool inside = full.Equals(root, StringComparison.OrdinalIgnoreCase)
-                      || full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-
-        if (!inside) throw new InvalidOperationException($"路径超出工作目录：{relative}");
-        return full;
+        return Path.IsPathRooted(rel)
+            ? Path.GetFullPath(rel)
+            : Path.GetFullPath(Path.Combine(workspace, rel));
     }
 
     private static string DisplayPath(string workspace, string full)
     {
         string root = Path.GetFullPath(workspace).TrimEnd(Path.DirectorySeparatorChar);
-        return full.Equals(root, StringComparison.OrdinalIgnoreCase)
-            ? "."
-            : full[(root.Length + 1)..];
+
+        if (full.Equals(root, StringComparison.OrdinalIgnoreCase)) return ".";
+        if (full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return full[(root.Length + 1)..];
+        return full;
     }
 
     private static string GetString(JsonElement root, string name, string fallback)
         => root.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? fallback
+            : fallback;
+
+    private static int GetInt(JsonElement root, string name, int fallback)
+        => root.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number
+           && value.TryGetInt32(out int number)
+            ? number
             : fallback;
 
     private static string FormatSize(long bytes) => bytes switch

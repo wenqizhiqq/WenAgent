@@ -4,17 +4,17 @@
         Title="WenAgent - 本地 AI Agent"
         Width="1100" Height="780" MinWidth="860" MinHeight="560"
         WindowStartupLocation="CenterScreen"
-        Background="#0B0E13"
+        Background="#FFFFFF"
         FontFamily="Microsoft YaHei UI"
         TextOptions.TextFormattingMode="Display"
         SnapsToDevicePixels="True">
     <Window.Resources>
-        <SolidColorBrush x:Key="AccentBrush" Color="#2E5BFF"/>
-        <SolidColorBrush x:Key="AccentHoverBrush" Color="#4571FF"/>
-        <SolidColorBrush x:Key="GhostBorderBrush" Color="#2A3446"/>
-        <SolidColorBrush x:Key="GhostHoverBrush" Color="#1A2130"/>
-        <SolidColorBrush x:Key="BodyBrush" Color="#E8ECF4"/>
-        <SolidColorBrush x:Key="MutedBrush" Color="#8C95A6"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="GhostBorderBrush" Color="#D8DEE9"/>
+        <SolidColorBrush x:Key="GhostHoverBrush" Color="#F1F5F9"/>
+        <SolidColorBrush x:Key="BodyBrush" Color="#0F172A"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
 
         <Style x:Key="AccentButton" TargetType="Button">
             <Setter Property="Foreground" Value="#FFFFFF"/>
@@ -34,7 +34,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -43,7 +43,7 @@
         </Style>
 
         <Style x:Key="GhostButton" TargetType="Button">
-            <Setter Property="Foreground" Value="#C6D0E0"/>
+            <Setter Property="Foreground" Value="#334155"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Padding" Value="14,7"/>
             <Setter Property="FontSize" Value="12.5"/>
@@ -61,7 +61,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="{StaticResource GhostHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -70,7 +70,7 @@
         </Style>
 
         <Style x:Key="DangerButton" TargetType="Button">
-            <Setter Property="Foreground" Value="#F08A8A"/>
+            <Setter Property="Foreground" Value="#DC2626"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Padding" Value="16,9"/>
             <Setter Property="FontSize" Value="13"/>
@@ -79,15 +79,15 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd" CornerRadius="9" Background="{TemplateBinding Background}"
-                                BorderBrush="#5A2B2F" BorderThickness="1" Padding="{TemplateBinding Padding}">
+                                BorderBrush="#FCA5A5" BorderThickness="1" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#231316"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#FEF2F2"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -95,8 +95,8 @@
             </Setter>
         </Style>
 
-        <Style x:Key="DarkCheckBox" TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#AEB8C8"/>
+        <Style x:Key="LightCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#334155"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -104,7 +104,7 @@
                     <ControlTemplate TargetType="CheckBox">
                         <StackPanel Orientation="Horizontal" Background="Transparent">
                             <Border x:Name="Box" Width="16" Height="16" CornerRadius="4"
-                                    Background="#11151C" BorderBrush="#3A4457" BorderThickness="1"
+                                    Background="#FFFFFF" BorderBrush="#CBD5E1" BorderThickness="1"
                                     VerticalAlignment="Center">
                                 <Path x:Name="Check" Data="M2,8 L6,12 L14,3"
                                       Stroke="#FFFFFF" StrokeThickness="2"
@@ -121,7 +121,7 @@
                                 <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#5B79B8"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#94A3B8"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.4"/>
@@ -136,11 +136,11 @@
             <Grid Margin="0,5">
                 <Border x:Name="Bubble" HorizontalAlignment="Left" MaxWidth="820"
                         CornerRadius="12" Padding="14,10"
-                        Background="#151A23" BorderBrush="#222A38" BorderThickness="1"
+                        Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
                         ToolTip="{Binding FullContent}">
                     <StackPanel>
                         <TextBlock x:Name="HeaderText" Text="{Binding Header}" FontSize="10.5"
-                                   Foreground="#7C879B" Margin="1,0,0,5" TextWrapping="Wrap"/>
+                                   Foreground="#64748B" Margin="1,0,0,5" TextWrapping="Wrap"/>
                         <ScrollViewer x:Name="BodyScroll" VerticalScrollBarVisibility="Disabled"
                                       HorizontalScrollBarVisibility="Disabled">
                             <TextBlock x:Name="BodyText" Text="{Binding Content}" TextWrapping="Wrap"
@@ -152,43 +152,43 @@
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding Kind}" Value="User">
                     <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Right"/>
-                    <Setter TargetName="Bubble" Property="Background" Value="{StaticResource AccentBrush}"/>
-                    <Setter TargetName="Bubble" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                    <Setter TargetName="HeaderText" Property="Foreground" Value="#C9D4FF"/>
+                    <Setter TargetName="Bubble" Property="Background" Value="#DBEAFE"/>
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#BFDBFE"/>
+                    <Setter TargetName="HeaderText" Property="Foreground" Value="#1E40AF"/>
                     <Setter TargetName="HeaderText" Property="HorizontalAlignment" Value="Right"/>
-                    <Setter TargetName="BodyText" Property="Foreground" Value="#FFFFFF"/>
+                    <Setter TargetName="BodyText" Property="Foreground" Value="#0F172A"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Streaming">
-                    <Setter TargetName="Bubble" Property="Background" Value="#0F141C"/>
-                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#1E2A3C"/>
-                    <Setter TargetName="HeaderText" Property="Foreground" Value="#6E87A8"/>
+                    <Setter TargetName="Bubble" Property="Background" Value="#F8FAFC"/>
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#E2E8F0"/>
+                    <Setter TargetName="HeaderText" Property="Foreground" Value="#64748B"/>
                     <Setter TargetName="BodyText" Property="FontFamily" Value="Cascadia Mono, Consolas"/>
                     <Setter TargetName="BodyText" Property="FontSize" Value="12"/>
-                    <Setter TargetName="BodyText" Property="Foreground" Value="#9FB0C7"/>
+                    <Setter TargetName="BodyText" Property="Foreground" Value="#475569"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Step">
-                    <Setter TargetName="Bubble" Property="Background" Value="#0F1621"/>
-                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#1C2B44"/>
-                    <Setter TargetName="HeaderText" Property="Foreground" Value="#6F86A8"/>
-                    <Setter TargetName="BodyText" Property="Foreground" Value="#8FA9D6"/>
+                    <Setter TargetName="Bubble" Property="Background" Value="#EFF6FF"/>
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#BFDBFE"/>
+                    <Setter TargetName="HeaderText" Property="Foreground" Value="#2563EB"/>
+                    <Setter TargetName="BodyText" Property="Foreground" Value="#1E3A8A"/>
                     <Setter TargetName="BodyText" Property="FontSize" Value="12.5"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Tool">
-                    <Setter TargetName="Bubble" Property="Background" Value="#0C1714"/>
-                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#1B3A30"/>
+                    <Setter TargetName="Bubble" Property="Background" Value="#F0FDF4"/>
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#BBF7D0"/>
                     <Setter TargetName="Bubble" Property="MaxWidth" Value="880"/>
-                    <Setter TargetName="HeaderText" Property="Foreground" Value="#5F9482"/>
+                    <Setter TargetName="HeaderText" Property="Foreground" Value="#15803D"/>
                     <Setter TargetName="BodyText" Property="FontFamily" Value="Cascadia Mono, Consolas"/>
                     <Setter TargetName="BodyText" Property="FontSize" Value="11.5"/>
-                    <Setter TargetName="BodyText" Property="Foreground" Value="#A9D8C6"/>
+                    <Setter TargetName="BodyText" Property="Foreground" Value="#166534"/>
                     <Setter TargetName="BodyScroll" Property="MaxHeight" Value="260"/>
                     <Setter TargetName="BodyScroll" Property="VerticalScrollBarVisibility" Value="Auto"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Error">
-                    <Setter TargetName="Bubble" Property="Background" Value="#2A1315"/>
-                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#5A2427"/>
-                    <Setter TargetName="HeaderText" Property="Foreground" Value="#D98A8A"/>
-                    <Setter TargetName="BodyText" Property="Foreground" Value="#F0B4B4"/>
+                    <Setter TargetName="Bubble" Property="Background" Value="#FEF2F2"/>
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#FECACA"/>
+                    <Setter TargetName="HeaderText" Property="Foreground" Value="#B91C1C"/>
+                    <Setter TargetName="BodyText" Property="Foreground" Value="#991B1B"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Info">
                     <Setter TargetName="Bubble" Property="Background" Value="Transparent"/>
@@ -196,7 +196,7 @@
                     <Setter TargetName="Bubble" Property="Padding" Value="4"/>
                     <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Center"/>
                     <Setter TargetName="HeaderText" Property="Visibility" Value="Collapsed"/>
-                    <Setter TargetName="BodyText" Property="Foreground" Value="#76839A"/>
+                    <Setter TargetName="BodyText" Property="Foreground" Value="#64748B"/>
                     <Setter TargetName="BodyText" Property="FontSize" Value="11.5"/>
                     <Setter TargetName="BodyText" Property="TextAlignment" Value="Center"/>
                 </DataTrigger>
@@ -213,7 +213,7 @@
         </Grid.RowDefinitions>
 
         <!-- 顶栏 -->
-        <Border Grid.Row="0" Background="#0C0F14" BorderBrush="#1B2130" BorderThickness="0,0,0,1"
+        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1"
                 Padding="24,13">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -228,21 +228,23 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="WenAgent" FontSize="17" FontWeight="SemiBold" Foreground="#F2F5FA"/>
+                        <TextBlock Text="WenAgent" FontSize="17" FontWeight="SemiBold" Foreground="#0F172A"/>
                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#8C95A6"
+                            <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#94A3B8"
                                      VerticalAlignment="Center"/>
                             <TextBlock x:Name="StatusText" Text="正在启动…" Margin="6,0,0,0"
                                        FontSize="11.5" Foreground="{StaticResource MutedBrush}"
-                                       TextTrimming="CharacterEllipsis" MaxWidth="440"/>
+                                       TextTrimming="CharacterEllipsis" MaxWidth="330"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <CheckBox x:Name="CommandCheck" Content="允许执行命令" IsChecked="True"
-                              Style="{StaticResource DarkCheckBox}" Margin="0,0,18,0"
+                              Style="{StaticResource LightCheckBox}" Margin="0,0,16,0"
                               Checked="CommandCheck_Changed" Unchecked="CommandCheck_Changed"/>
+                    <Button x:Name="WorkingDirButton" Content="工作目录" Style="{StaticResource GhostButton}"
+                            Margin="0,0,8,0" Click="WorkingDir_Click"/>
                     <Button x:Name="NewChatButton" Content="新对话" Style="{StaticResource GhostButton}"
                             Click="NewChat_Click"/>
                 </StackPanel>
@@ -251,7 +253,7 @@
 
         <!-- 模型缺失提示 -->
         <Border x:Name="MissingPanel" Grid.Row="1" Visibility="Collapsed"
-                Background="#241A12" BorderBrush="#5C3C1D" BorderThickness="0,0,0,1" Padding="24,14">
+                Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="0,0,0,1" Padding="24,14">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -259,9 +261,9 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Margin="0,0,20,0">
                     <TextBlock x:Name="MissingTitle" Text="未找到 GGUF 模型" FontSize="14"
-                               FontWeight="SemiBold" Foreground="#F5C27A"/>
+                               FontWeight="SemiBold" Foreground="#92400E"/>
                     <TextBlock x:Name="MissingDetail" Margin="0,5,0,0" FontSize="12"
-                               Foreground="#D8C5A8" TextWrapping="Wrap" LineHeight="19"/>
+                               Foreground="#78350F" TextWrapping="Wrap" LineHeight="19"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="打开下载页面" Style="{StaticResource AccentButton}" Padding="14,7"
@@ -277,13 +279,13 @@
         <!-- 消息区 -->
         <ScrollViewer x:Name="ChatScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled" Padding="24,10,24,10"
-                      PanningMode="VerticalOnly">
+                      PanningMode="VerticalOnly" Background="#FFFFFF">
             <ItemsControl ItemsSource="{Binding Messages}"
                           ItemTemplate="{StaticResource MessageTemplate}"/>
         </ScrollViewer>
 
         <!-- 输入区 -->
-        <Border Grid.Row="3" Background="#0C0F14" BorderBrush="#1B2130" BorderThickness="0,1,0,0"
+        <Border Grid.Row="3" Background="#FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
                 Padding="24,12,24,14">
             <Grid>
                 <Grid.RowDefinitions>
@@ -291,19 +293,19 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Background="#0B0E13" BorderBrush="#242C3B" BorderThickness="1"
+                <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#D8DEE9" BorderThickness="1"
                         CornerRadius="10" Height="78">
                     <Grid>
                         <TextBox x:Name="InputBox" Background="Transparent" BorderThickness="0"
-                                 Foreground="#E8ECF4" CaretBrush="#E8ECF4" SelectionBrush="#2E5BFF"
+                                 Foreground="#0F172A" CaretBrush="#0F172A" SelectionBrush="#BFDBFE"
                                  Padding="12,10" FontSize="13.5" AcceptsReturn="True" AcceptsTab="False"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                  VerticalContentAlignment="Top"
                                  TextChanged="InputBox_TextChanged"
                                  PreviewKeyDown="InputBox_PreviewKeyDown"/>
                         <TextBlock x:Name="InputPlaceholder" Margin="13,11,13,0"
-                                   Text="描述任务，例如：把当前目录的文件列表整理成 report.md"
-                                   Foreground="#4E5A70" FontSize="13" IsHitTestVisible="False"
+                                   Text="描述任务，例如：修改当前目录的 xxx.xlsx，或先点“工作目录”选择文件夹"
+                                   Foreground="#94A3B8" FontSize="13" IsHitTestVisible="False"
                                    TextWrapping="Wrap"/>
                     </Grid>
                 </Border>
@@ -315,8 +317,8 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="10.5"
-                               Foreground="#5A6478"
-                               Text="Enter 发送 · Shift+Enter 换行 · 命令与写文件限制在工作目录内"/>
+                               Foreground="#94A3B8"
+                               Text="Enter 发送 · Shift+Enter 换行 · 相对路径基于工作目录，也支持绝对路径"/>
                     <Button x:Name="StopButton" Grid.Column="1" Content="停止"
                             Style="{StaticResource DangerButton}" MinWidth="78" Margin="0,0,8,0"
                             Click="Stop_Click" IsEnabled="False"/>

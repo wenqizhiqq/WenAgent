@@ -21,10 +21,10 @@ public partial class MainWindow : Window
         Error
     }
 
-    private static readonly Brush IdleBrush = MakeBrush(0x8C, 0x95, 0xA6);
-    private static readonly Brush BusyBrush = MakeBrush(0xFB, 0xBF, 0x24);
-    private static readonly Brush ReadyBrush = MakeBrush(0x36, 0xD3, 0x99);
-    private static readonly Brush ErrorBrush = MakeBrush(0xF8, 0x71, 0x71);
+    private static readonly Brush IdleBrush = MakeBrush(0x94, 0xA3, 0xB8);
+    private static readonly Brush BusyBrush = MakeBrush(0xD9, 0x77, 0x06);
+    private static readonly Brush ReadyBrush = MakeBrush(0x16, 0xA3, 0x4A);
+    private static readonly Brush ErrorBrush = MakeBrush(0xDC, 0x26, 0x26);
 
     private readonly ObservableCollection<ChatMessage> _messages = [];
 
@@ -107,7 +107,7 @@ public partial class MainWindow : Window
         _ready = false;
         UpdateUiState();
 
-        var engine = new AgentEngine(path)
+        var engine = new AgentEngine(path, UserSettings.LoadWorkspace())
         {
             AllowCommands = CommandCheck.IsChecked == true
         };
@@ -128,11 +128,13 @@ public partial class MainWindow : Window
 
             SetStatus($"就绪 · {Path.GetFileName(path)}", StatusKind.Ready);
             StatusText.ToolTip = $"模型：{path}\n工作目录：{engine.WorkspacePath}";
+            WorkingDirButton.ToolTip = engine.WorkspacePath;
 
             AddInfo("模型已就绪。");
             AddInfo($"模型：{path}");
             AddInfo($"工作目录：{engine.WorkspacePath}");
             AddInfo("可以试试：看看工作目录里有什么；或者：写一个 hello.txt 再读出来。");
+            AddInfo("要修改已有文件：点右上角“工作目录”选择文件所在文件夹，或直接在任务里写绝对路径。");
             return true;
         }
         catch (Exception ex)
@@ -347,6 +349,46 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void WorkingDir_Click(object sender, RoutedEventArgs e)
+    {
+        if (_engine == null || _running || _loading) return;
+
+        var dialog = new OpenFolderDialog
+        {
+            Title = "选择 Agent 的工作目录",
+            InitialDirectory = _engine.WorkspacePath
+        };
+
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName))
+            return;
+
+        string path = dialog.FolderName;
+        _loading = true;
+        UpdateUiState();
+
+        try
+        {
+            AgentEngine engine = _engine;
+            await Task.Run(() => engine.SetWorkspace(path));
+
+            UserSettings.SaveWorkspace(path);
+            WorkingDirButton.ToolTip = path;
+            StatusText.ToolTip = $"模型：{engine.ModelPath}\n工作目录：{path}";
+
+            AddInfo($"工作目录已切换到：{path}");
+            AddInfo("模型上下文已重置；下一轮任务会基于新目录执行，可以直接说“修改 xxx.xlsx”。");
+        }
+        catch (Exception ex)
+        {
+            AddInfo("切换工作目录失败：" + ex.Message);
+        }
+        finally
+        {
+            _loading = false;
+            UpdateUiState();
+        }
+    }
+
     private async void Send_Click(object sender, RoutedEventArgs e) => await SendAsync();
 
     private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -416,6 +458,7 @@ public partial class MainWindow : Window
         StopButton.IsEnabled = _running;
         InputBox.IsEnabled = _ready && !_loading;
         NewChatButton.IsEnabled = _ready && idle;
+        WorkingDirButton.IsEnabled = _ready && idle;
         CommandCheck.IsEnabled = _engine != null && idle;
         MissingPanel.IsEnabled = idle;
     }

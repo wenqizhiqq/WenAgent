@@ -16,26 +16,39 @@ public sealed record AgentEvent(AgentEventKind Kind, string Text = "", string De
 
 public sealed class AgentEngine : IDisposable
 {
-    public const int MaxSteps = 10;
+    public const int MaxSteps = 12;
 
     private readonly LlamaRunner _runner;
     private readonly List<ChatTurn> _turns = [];
-    private readonly string _systemPrompt;
+    private string _systemPrompt;
     private bool _needsReset;
 
-    public AgentEngine(string modelPath)
+    public AgentEngine(string modelPath, string? workspace = null)
     {
-        WorkspacePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "WenAgentWorkspace");
+        WorkspacePath = Path.GetFullPath(workspace ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "WenAgentWorkspace"));
         Directory.CreateDirectory(WorkspacePath);
 
         _systemPrompt = AgentPrompts.BuildSystemPrompt(WorkspacePath, MaxSteps);
         _runner = new LlamaRunner(modelPath);
     }
 
-    public string WorkspacePath { get; }
+    public string WorkspacePath { get; private set; }
     public string ModelPath => _runner.ModelPath;
     public bool AllowCommands { get; set; } = true;
+
+    public void SetWorkspace(string path)
+    {
+        string full = Path.GetFullPath(path);
+        Directory.CreateDirectory(full);
+
+        WorkspacePath = full;
+        _systemPrompt = AgentPrompts.BuildSystemPrompt(full, MaxSteps);
+        _turns.Clear();
+        _needsReset = true;
+
+        if (_runner.IsLoaded) PrepareSession();
+    }
 
     public Task LoadAsync(IProgress<string>? status, CancellationToken ct)
         => _runner.LoadAsync(_systemPrompt, status, ct);
