@@ -14,7 +14,12 @@ public enum AgentEventKind
     Progress
 }
 
-public sealed record AgentEvent(AgentEventKind Kind, string Text = "", string Detail = "", bool Success = true);
+public sealed record AgentEvent(
+    AgentEventKind Kind,
+    string Text = "",
+    string Detail = "",
+    bool Success = true,
+    double Percent = -1);
 
 public sealed class AgentEngine : IDisposable
 {
@@ -33,6 +38,9 @@ public sealed class AgentEngine : IDisposable
 
         _systemPrompt = AgentPrompts.BuildSystemPrompt(WorkspacePath, MaxSteps);
         _runner = new LlamaRunner(modelPath);
+
+        foreach (ChatTurn turn in WenAgent.ChatStore.LoadTurns().TakeLast(4))
+            _turns.Add(turn);
     }
 
     public string WorkspacePath { get; private set; }
@@ -51,12 +59,21 @@ public sealed class AgentEngine : IDisposable
         if (resetConversation)
         {
             _turns.Clear();
+            WenAgent.ChatStore.ClearTurns();
             if (_runner.IsLoaded) PrepareSession();
         }
     }
 
-    public Task LoadAsync(IProgress<string>? status, CancellationToken ct)
-        => _runner.LoadAsync(_systemPrompt, status, ct);
+    public async Task LoadAsync(IProgress<string>? status, CancellationToken ct)
+    {
+        await _runner.LoadAsync(_systemPrompt, status, ct);
+
+        if (_turns.Count > 0)
+        {
+            _needsReset = true;
+            PrepareSession();
+        }
+    }
 
     public async Task RunAsync(string task, IProgress<AgentEvent> sink, CancellationToken ct)
     {
@@ -66,6 +83,9 @@ public sealed class AgentEngine : IDisposable
         string input = task;
         int repairs = 0;
         int emptyRetries = 0;
+        int falseClaimRetries = 0;
+        bool mutationToolSucceeded = false;
+        bool taskNeedsMutation = TaskRequiresFileMutation(task);
 
         try
         {
@@ -97,6 +117,22 @@ public sealed class AgentEngine : IDisposable
                             _needsReset = true;
                         }
 
+                        if (!mutationToolSucceeded && (taskNeedsMutation || LooksLikeCompletionClaim(answer)))
+                        {
+                            if (falseClaimRetries < 1)
+                            {
+                                falseClaimRetries++;
+                                input = "你还没有成功调用任何会修改/生成文件的工具（write_file 写数据文件、run_python、run_command），" +
+                                        "不能声称已完成。请实际执行；write_file 必须同时提供 path 和 content。" +
+                                        "只有工具成功返回后才能 final。";
+                                continue;
+                            }
+
+                            answer = "本次没有实际修改/生成文件：模型声称已完成，但没有成功调用写入/执行工具。" +
+                                     "请重试，或点“新对话”后重新执行。";
+                            _needsReset = true;
+                        }
+
                         FinishAnswer(task, answer, step, sink);
                         return;
                     }
@@ -109,6 +145,8 @@ public sealed class AgentEngine : IDisposable
                             result = ChangeWorkspace(parsed.ArgsJson);
                         else if (parsed.Tool.Equals("inspect_image", StringComparison.OrdinalIgnoreCase))
                             result = await InspectImageAsync(parsed.ArgsJson, sink, ct);
+                        else if (parsed.Tool.Equals("download_file", StringComparison.OrdinalIgnoreCase))
+                            result = await DownloadFileAsync(parsed.ArgsJson, sink, ct);
                         else
                             result = await AgentTools.ExecuteAsync(
                                 parsed.Tool, parsed.ArgsJson, WorkspacePath, AllowCommands, ct);
@@ -167,6 +205,9 @@ public sealed class AgentEngine : IDisposable
                         }
 
                         string output = Truncate(result.Output, 6000);
+
+                        if (ToolCountsAsMutation(parsed.Tool, parsed.ArgsJson, result.Success))
+                            mutationToolSucceeded = true;
                         sink.Report(new AgentEvent(AgentEventKind.ToolResult, output, parsed.Tool, result.Success));
 
                         input = $"""
@@ -199,6 +240,22 @@ public sealed class AgentEngine : IDisposable
                             _needsReset = true;
                         }
 
+                        if (!mutationToolSucceeded && (taskNeedsMutation || LooksLikeCompletionClaim(fallback)))
+                        {
+                            if (falseClaimRetries < 1)
+                            {
+                                falseClaimRetries++;
+                                input = "你还没有成功调用任何会修改/生成文件的工具（write_file 写数据文件、run_python、run_command），" +
+                                        "不能声称已完成。请实际执行；write_file 必须同时提供 path 和 content。" +
+                                        "只有工具成功返回后才能 final。";
+                                continue;
+                            }
+
+                            fallback = "本次没有实际修改/生成文件：模型声称已完成，但没有成功调用写入/执行工具。" +
+                                       "请重试，或点“新对话”后重新执行。";
+                            _needsReset = true;
+                        }
+
                         FinishAnswer(task, fallback, step, sink);
                         return;
                     }
@@ -215,6 +272,22 @@ public sealed class AgentEngine : IDisposable
 
                             answer = "模型本次没有生成内容。这通常是上下文过长或模型偶发空回复；" +
                                      "请点“新对话”清空上下文后再试，或把任务拆小。";
+                            _needsReset = true;
+                        }
+
+                        if (!mutationToolSucceeded && (taskNeedsMutation || LooksLikeCompletionClaim(answer)))
+                        {
+                            if (falseClaimRetries < 1)
+                            {
+                                falseClaimRetries++;
+                                input = "你还没有成功调用任何会修改/生成文件的工具（write_file 写数据文件、run_python、run_command），" +
+                                        "不能声称已完成。请实际执行；write_file 必须同时提供 path 和 content。" +
+                                        "只有工具成功返回后才能 final。";
+                                continue;
+                            }
+
+                            answer = "本次没有实际修改/生成文件：模型声称已完成，但没有成功调用写入/执行工具。" +
+                                     "请重试，或点“新对话”后重新执行。";
                             _needsReset = true;
                         }
 
@@ -331,6 +404,68 @@ public sealed class AgentEngine : IDisposable
         }
     }
 
+    private static readonly string[] CompletionClaimMarkers =
+    [
+        "已添加", "已修改", "已写入", "已保存", "已更新", "已创建", "已将",
+        "已经添加", "已经修改", "已经写入", "已经保存", "已经更新",
+        "成功添加", "成功修改", "成功写入", "成功保存",
+        "成功创建", "生成成功", "已生成", "生成了", "创建完成", "添加完成", "修改完成", "写入完成", "保存完成"
+    ];
+
+    private static readonly string[] MutationActions =
+    [
+        "添加", "修改", "写入", "保存", "创建", "生成", "更新", "删除",
+        "整理", "导出", "转换", "备份", "写一个", "写一份", "运行"
+    ];
+
+    private static readonly string[] FileHints =
+    [
+        "文件", "脚本", "目录", "表格", "Excel", "Word", "PDF", "图片", "路径",
+        ".py", ".csv", ".xlsx", ".docx", ".pdf", ".png", ".jpg", ".jpeg",
+        ".txt", ".md", ".json", ".flow", ".pptx"
+    ];
+
+    private static bool TaskRequiresFileMutation(string task)
+    {
+        bool hasAction = MutationActions.Any(action => task.Contains(action, StringComparison.OrdinalIgnoreCase));
+        bool hasFile = FileHints.Any(hint => task.Contains(hint, StringComparison.OrdinalIgnoreCase));
+        return hasAction && hasFile;
+    }
+
+    private static bool LooksLikeCompletionClaim(string text)
+        => CompletionClaimMarkers.Any(marker => text.Contains(marker, StringComparison.Ordinal));
+
+    private static bool ToolCountsAsMutation(string tool, string argsJson, bool success)
+    {
+        if (!success) return false;
+
+        if (tool.Equals("run_python", StringComparison.OrdinalIgnoreCase)
+            || tool.Equals("run_command", StringComparison.OrdinalIgnoreCase)
+            || tool.Equals("replace_in_file", StringComparison.OrdinalIgnoreCase)
+            || tool.Equals("download_file", StringComparison.OrdinalIgnoreCase)
+            || tool.Equals("capture_screen", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!tool.Equals("write_file", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(argsJson);
+            string path = doc.RootElement.TryGetProperty("path", out JsonElement value)
+                          && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? ""
+                : "";
+
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext is not ".py" and not ".pyw" and not ".ps1" and not ".sh" and not ".bat" and not ".cmd";
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private bool TryRecoverEmpty(string task, string previousInput, ref int emptyRetries, out string retryInput)
     {
         retryInput = "";
@@ -351,14 +486,68 @@ public sealed class AgentEngine : IDisposable
     {
         sink.Report(new AgentEvent(AgentEventKind.Final, answer));
         _turns.Add(new ChatTurn(task, answer));
+        WenAgent.ChatStore.SaveTurns(_turns);
 
         // 多步任务会留下大量工具输出，下一轮开始前压缩上下文，避免 16k 被撑满
         if (step >= 5) _needsReset = true;
     }
 
+    private async Task<ToolResult> DownloadFileAsync(
+        string argsJson, IProgress<AgentEvent> sink, CancellationToken ct)
+    {
+        string name = "文件";
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(argsJson);
+            JsonElement root = doc.RootElement;
+
+            string url = root.TryGetProperty("url", out JsonElement u) && u.ValueKind == JsonValueKind.String
+                ? u.GetString() ?? ""
+                : "";
+            string path = root.TryGetProperty("path", out JsonElement p) && p.ValueKind == JsonValueKind.String
+                ? p.GetString() ?? ""
+                : "";
+
+            if (string.IsNullOrWhiteSpace(url))
+                return new ToolResult(false, "缺少参数 url。");
+
+            if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+            {
+                string fileName = Path.GetFileName(Uri.UnescapeDataString(uri.AbsolutePath));
+                if (!string.IsNullOrWhiteSpace(fileName)) name = fileName;
+            }
+
+            var progress = new Progress<double>(percent =>
+            {
+                string text = percent < 0
+                    ? $"正在下载 {name}…（大小未知）"
+                    : $"正在下载 {name}… {percent:F0}%";
+
+                sink.Report(new AgentEvent(
+                    AgentEventKind.Progress, text, "", true, percent < 0 ? -1 : percent));
+            });
+
+            return await AgentTools.DownloadFileAsync(WorkspacePath, url, path, progress, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new ToolResult(false, "下载失败：" + ex.Message);
+        }
+        finally
+        {
+            sink.Report(new AgentEvent(AgentEventKind.Progress, ""));
+        }
+    }
+
     public void NewConversation()
     {
         _turns.Clear();
+        WenAgent.ChatStore.ClearTurns();
         _needsReset = true;
         PrepareSession();
     }

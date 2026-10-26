@@ -41,17 +41,20 @@ public static class AgentStepParser
 
             string action = GetString(root, "action").Trim().ToLowerInvariant();
 
-            if (action == "tool")
+            string toolName = GetString(root, "tool").Trim();
+            if (toolName.Length == 0 && IsKnownToolName(action))
+                toolName = action;
+
+            if (action == "tool" || toolName.Length > 0)
             {
-                string tool = GetString(root, "tool").Trim();
-                if (tool.Length == 0)
+                if (toolName.Length == 0)
                     return new AgentStep(StepKind.Invalid, "", "{}", "", raw);
 
                 string args = root.TryGetProperty("args", out JsonElement a) && a.ValueKind == JsonValueKind.Object
                     ? a.GetRawText()
                     : "{}";
 
-                return new AgentStep(StepKind.Tool, tool, args, "", raw);
+                return new AgentStep(StepKind.Tool, toolName, args, "", raw);
             }
 
             string answer = GetString(root, "answer").Trim();
@@ -220,6 +223,15 @@ public static class AgentStepParser
             ? value.GetString() ?? ""
             : "";
 
+    private static bool IsKnownToolName(string name) => name.ToLowerInvariant() switch
+    {
+        "list_files" or "read_file" or "write_file" or "find_files" or "search_text"
+            or "replace_in_file" or "set_workspace" or "inspect_image" or "run_python"
+            or "run_command" or "fetch_url" or "download_file" or "capture_screen"
+            or "system_info" => true,
+        _ => false
+    };
+
     private static string CleanText(string text)
     {
         string t = text.Trim();
@@ -286,6 +298,7 @@ public static class AgentPrompts
 
         【输出协议】
         每一步只输出一个 JSON 对象，不要输出 Markdown 代码块、解释或任何其他文字。
+        action 只能是 tool 或 final；工具名必须放在 tool 字段里。
         调用工具：{"action":"tool","tool":"工具名","args":{...}}
         结束任务：{"action":"final","answer":"给用户的最终答复"}
 
@@ -295,7 +308,13 @@ public static class AgentPrompts
         - read_file   {"path":"a.txt"}                                  读取文本文件（xlsx/docx/pdf 等二进制文件不支持）
         - write_file  {"path":"a.py","content":"..."}                   覆盖写入文本文件，自动创建目录
         - find_files  {"path":".","pattern":"*.xlsx","max_results":20}  递归查找文件（深度 6，最多 10 秒）
+        - search_text {"path":".","query":"关键词","pattern":"*.cs"}    在文件中搜索文本
+        - replace_in_file {"path":"a.txt","old":"原文","new":"新文"}     精确替换文本，自动备份
         - run_python  {"script":"a.py"}                                 用 Python 执行脚本（工作目录=脚本所在目录）
+        - fetch_url   {"url":"https://..."}                            读取网页/HTTP 文本
+        - download_file {"url":"https://...","path":"file.bin"}        下载文件到本地（显示百分比进度）
+        - capture_screen {"path":"screen.png"}                         截取当前屏幕
+        - system_info {}                                               查看系统/CPU/内存/磁盘
         - inspect_image {"path":"C:\\img\\a.jpg","question":"重点检查划痕、孔洞"}  本地视觉模型检测图片缺陷
         - run_command {"command":"Copy-Item x.xlsx x.xlsx.bak"}        用 PowerShell 在工作目录执行命令，最长 60 秒
 
@@ -306,6 +325,7 @@ public static class AgentPrompts
         4. 修改已有文件前，先用 run_command 备份（例如 Copy-Item x.xlsx x.xlsx.bak）。
         5. 文件在其他目录时，先 set_workspace 切到该目录，之后统一用相对路径；不要混用绝对路径和相对路径。
         6. 纯文本/Markdown/JSON/代码文件直接用 write_file 写目标文件；不要为了生成一段文字而写 Python 脚本。
+           write_file 必须同时提供 path 和 content，缺一个都会被拒绝。
            xlsx/xls/xlsm/docx/pdf/图片等二进制文件绝不能 write_file（工具会直接拒绝并报错）。
         7. 写 Python 脚本时，多行字符串必须用三引号（连续三个双引号）；单引号/双引号内不能直接换行。
            write_file 会自动做 Python 语法检查；报 SyntaxError 就按行修正，不要原样重试。

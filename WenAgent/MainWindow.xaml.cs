@@ -51,6 +51,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = this;
 
+        foreach (ChatMessage message in ChatStore.LoadMessages())
+            _messages.Add(message);
+
         Loaded += OnLoaded;
         Closing += OnClosing;
 
@@ -335,6 +338,7 @@ public partial class MainWindow : Window
                 UserSettings.SaveWorkspace(_engine.WorkspacePath);
             }
 
+            ChatStore.SaveMessages(_messages);
             UpdateUiState();
             ScrollToEnd(force: true);
             InputBox.Focus();
@@ -417,7 +421,16 @@ public partial class MainWindow : Window
                 {
                     TransferText.Text = ev.Text;
                     TransferPanel.Visibility = Visibility.Visible;
-                    TransferBar.IsIndeterminate = true;
+
+                    if (ev.Percent >= 0)
+                    {
+                        TransferBar.IsIndeterminate = false;
+                        TransferBar.Value = Math.Clamp(ev.Percent, 0, 100);
+                    }
+                    else
+                    {
+                        TransferBar.IsIndeterminate = true;
+                    }
                 }
                 break;
         }
@@ -425,6 +438,10 @@ public partial class MainWindow : Window
         bool forceScroll = ev.Kind is AgentEventKind.GenerationStarted
             or AgentEventKind.ToolResult
             or AgentEventKind.Final;
+
+        if (ev.Kind != AgentEventKind.Token)
+            ChatStore.SaveMessages(_messages);
+
         ScrollToEnd(forceScroll);
     }
 
@@ -458,6 +475,7 @@ public partial class MainWindow : Window
             AgentEngine engine = _engine;
             await Task.Run(engine.NewConversation);
             _messages.Clear();
+            ChatStore.ClearMessages();
             _stream = null;
             AddInfo("新的对话已开始。");
             AddInfo($"工作目录：{engine.WorkspacePath}");
@@ -747,6 +765,8 @@ public partial class MainWindow : Window
     private void AddMessage(ChatMessage message)
     {
         _messages.Add(message);
+        if (message.Kind is not MessageKind.Info and not MessageKind.Streaming)
+            ChatStore.SaveMessages(_messages);
         ScrollToEnd(force: true);
     }
 
