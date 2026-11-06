@@ -16,3 +16,5 @@
 
 要不要我再精简成B站视频口播版本？
 <img width="2559" height="1527" alt="faddfc60ebd9d270f9ac6e426bce09d3" src="https://github.com/user-attachments/assets/7e04268a-0416-4ac1-a988-50efe7f945df" />
+<img width="1631" height="1160" alt="ded6aaa421614a873e38a012a2bc0292" src="https://github.com/user-attachments/assets/044d5ef2-b30d-42a1-99b6-cc032aee6d31" />
+<img width="2559" height="1527" alt="6b0cfad6184d1babbce0c55b95945c05" src="https://github.com/user-attachments/assets/719f9759-b7f5-4c61-bfe7-7ba172f35d20" />
